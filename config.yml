@@ -1,0 +1,43 @@
+bucket: jb-s3-bucket
+prefix: nfl_plays/
+file_type: png
+teams: 
+  - 49ers
+  - bears
+  - bengals
+  - bills
+  - broncos
+  - browns
+  - buccaneers 
+  - cardinals 
+  - chargers 
+  - chiefs 
+  - colts 
+  - cowboys 
+  - dolphins 
+  - eagles 
+  - falcons 
+  - giants 
+  - jaguars 
+  - jets 
+  - lions 
+  - packers 
+  - panthers 
+  - patriots 
+  - raiders 
+  - rams 
+  - ravens 
+  - redskins 
+  - saints 
+  - seahawks 
+  - steelers 
+  - texans 
+  - titans 
+  - vikings
+output_dir: image_data
+full_image_path: full_images.npy
+full_image_norm_path: full_images_norm.npy
+shape:
+  - 160
+  - 350
+  - 4
