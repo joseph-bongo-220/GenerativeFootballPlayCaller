@@ -1,12 +1,16 @@
 from __future__ import print_function
 import argparse
+import numpy as np
 import torch
-import torch.utils.data
-from torch import nn, optim
-from torch.nn import functional as F
+import torch.nn as nn
+import torch.nn.functional as F
+import torch.optim as optim
 from torchvision import datasets, transforms
-from torchvision.utils import save_image
-import math
+from torchvision.utils import save_image, make_grid
+
+from einops import rearrange, reduce
+from PIL import Image
+from sklearn.metrics import confusion_matrix
 import boto3
 import re
 from get_config import get_config
@@ -14,10 +18,10 @@ from image_preprocessing import get_cleaned_data
 from sklearn.model_selection import train_test_split
 
 base_config = get_config()
-config = base_config["neural_net"]["vae"]
+config = base_config["neural_net"]["cvae"]
 
 # add model arguments from config file
-parser = argparse.ArgumentParser(description='VAE Plays')
+parser = argparse.ArgumentParser(description='CVAE Plays')
 
 # This model is trained via backpropigation in batches. This allows the model to be trained much quicker
 # due to the smaller number of observations making the necessary operations less computationally expensive.
@@ -66,36 +70,48 @@ test_data = torch.Tensor(test_data)
 train_loader = torch.utils.data.DataLoader(training_data, batch_size=args.batch_size, shuffle=True, **kwargs)
 test_loader = torch.utils.data.DataLoader(test_data, batch_size=args.batch_size, shuffle=True, **kwargs)
 
-class VAE(nn.Module):
+# DESCRIBing THE CNN ARCHITECTURE 
+class ConvVAE(nn.Module):
     def __init__(self):
-        super(VAE, self).__init__()
+        super(ConvVAE, self).__init__()
+        # encode image
+        # input image dimesions (3 x 160 x 350)
+        self.conv1 = nn.Conv2d(in_channels=3, out_channels=120, kernel_size=(5,7), stride=2)
 
-        # define greater architecture of neural net
-        self.fc1 = nn.Linear(3*160*350, 20000)
-        self.fc2 = nn.Linear(20000, 6000)
-        self.fc3 = nn.Linear(6000, 2500)
-        self.fc4 = nn.Linear(2500, 800)
-        self.fc41 = nn.Linear(800, 200)
-        self.fc42 = nn.Linear(800, 200)
-        self.fc5 = nn.Linear(200, 800)
-        self.fc6 = nn.Linear(800, 2500)
-        self.fc7 = nn.Linear(2500, 6000)
-        self.fc8 = nn.Linear(6000, 20000)
-        self.fc9 = nn.Linear(20000, 3*160*350)
+        # convolution height (160-5+1)/2 = 78, convolution width (350-7+1)/2 = 172 (120 x 78 x 172)
+        # max pooling height floor(78/2) = 39 , max pooling width floor(172/2) = 86 (120 x 39 x 86)
+        self.conv2 = nn.Conv2d(in_channels=120, out_channels=240, kernel_size=(2,3), stride=1)
 
+        # convolution height (39-2+1)/1 = 38, convolution width (86-3+1)/1 = 84  (240 x 38 x 84)
+        # max pooling height floor(38/2) = 19, max pooling width floor(84/2) = 42 (240 x 19 x 42)
+        self.fc1 = nn.Linear(240*19*42, 5000)
+        self.fc2 = nn.Linear(5000, 1200)
+        self.fc31 = nn.Linear(1200, 300)
+        self.fc32 = nn.Linear(1200, 300)
+
+        # decode
+        self.fc4 = nn.Linear(300, 1200)
+        self.fc5 = nn.Linear(1200, 5000)
+        self.fc6 = nn.Linear(5000, 240*19*42)
+
+        # (240 x 19 x 42)
+        # (240 x 38 x 84)
+        self.conv3 = nn.ConvTranspose2d(in_channels=240, out_channels=120, kernel_size=(2,3), stride=1, output_padding=0)
+
+        # (120 x 39 x 84)
+        # (120 x 78 x 172)
+        self.conv4 = nn.ConvTranspose2d(in_channels=120, out_channels=3, kernel_size=(5,7), stride=2, output_padding=1)
+    
     def encode(self, x):
-        """The encoding layer here is meant to learn the posterior distribution of our hidden 
-         variables Z given the data observed X.
-            Posterior = q(Z|X)
-        We define this distribution to be a 200-dimensional Gaussian ball with 
-            Mu = self.fc41(h4) and Var = e^(self.fc42(h4))"""
-        # run data through first 6 layers to get 200-degree gaussian ball 
-        # (200 Gaussian means and 200 Gaussian log variances)
-        h1 = F.relu(self.fc1(x))
-        h2 = F.relu(self.fc2(h1))
-        h3 = F.relu(self.fc3(h2))
-        h4 = F.relu(self.fc4(h3))
-        return self.fc41(h4), self.fc42(h4)
+        # encode
+        con1 = F.relu(self.conv1(x))
+        max1 = F.max_pool2d(con1, 2, 2)
+        con2 = F.relu(self.conv2(max1))
+        max2 = F.max_pool2d(con2, 2, 2)
+        lin0 = max2.view(-1,19*42*240)
+        lin1 = F.relu(self.fc1(lin0))
+        lin2 = F.relu(self.fc2(lin1))
+        return self.fc31(lin2), self.fc32(lin2)
 
     def reparameterize(self, mu, logvar):
         """uses mean values and logvar values to sample random values"""
@@ -110,30 +126,26 @@ class VAE(nn.Module):
         # Return random number with Mean = mu and Variance = std^2
         return mu + eps*std
 
+
     def decode(self, z):
-        """The decoding layer here is meant to learn the prior distribution.
-            Prior = p(Z)
-        By design, since we know that Z can follow any Gaussian distribution it must be so that
-        p(Z) is the standard normal 200-degree Gaussian Ball."""
-        h5 = F.relu(self.fc5(z))
-        h6 = F.relu(self.fc6(h5))
-        h7 = F.relu(self.fc7(h6))
-        h8 = F.relu(self.fc8(h7))
-        return torch.sigmoid(self.fc9(h8))
+        # add two fully connected layers
+        lin3 = F.relu(self.fc4(z))
+        lin4 = F.relu(self.fc5(lin3))
+        lin5 = F.relu(self.fc6(lin4))
+        lin5 = lin5.reshape(-1, 240, 19, 42)
+        max3 = F.interpolate(lin5, scale_factor=2)
+        con3 = F.relu(self.conv3(max3))
+        max4 = F.interpolate(con3, scale_factor=2)
+        return torch.sigmoid(self.conv4(max4))
 
     def forward(self, x):
-        """This function encodes the input, does the sampling, and then decodes the sampled variables."""
-        mu, logvar = self.encode(x.view(-1, 3*160*350))
-        # print("Mu: " + str(mu))
-        # print(mu.shape)
-        # print("LogVar: " + str(logvar))
+        mu, logvar = self.encode(x)
         z = self.reparameterize(mu, logvar)
-        # print("Z: " + str(z))
         return self.decode(z), mu, logvar
 
 # save model to device and define optimizer as ADAM
 print("save model to device and define optimizer as ADAM")
-model = VAE().to(device)
+model = ConvVAE().to(device)
 optimizer = optim.Adam(model.parameters(), lr=1e-3)
 print("done")
 
@@ -148,14 +160,14 @@ def loss_function(recon_x, x, mu, logvar, recon_weight=config["recon_weight"], k
     # see Appendix B from VAE paper:
     # Kingma and Welling. Auto-Encoding Variational Bayes. ICLR, 2014
     # https://arxiv.org/abs/1312.6114
-    x = x.view(-1, 160*350*3)
+    x = x.view(-1, 3*160*350)
+    recon_x = recon_x.view(-1, 3*160*350)
     recon_loss = F.binary_cross_entropy(recon_x, x, size_average = False)
     KLD = 0.5 * ((-1 - logvar + mu.pow(2) + logvar.exp()).sum(axis = 0))
     # KLD = (recon_x * (recon_x/x).log())
 
     return recon_weight*recon_loss + kld_weight*KLD.mean()
-
-
+   
 def train(epoch):
     """This function trains the model. (Move epochs to within train and test functions)"""
     print("train")
@@ -183,6 +195,7 @@ def train(epoch):
         # run forward method of VAE model
         print("run forward method of VAE model")
         recon_batch, mu, logvar = model(data)
+        print("batch")
 
         # calculated KL Divergence/Reconstruction Loss Function
         print("calculated KL Divergence/Reconstruction Loss Function")
@@ -249,6 +262,5 @@ if __name__ == "__main__":
     print("Start")
     # Iterate over each epoch
     for epoch in range(1, args.epochs + 1):
-        print("log_sep")
         train(epoch)
         test(epoch)
