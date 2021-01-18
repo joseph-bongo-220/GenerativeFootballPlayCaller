@@ -74,7 +74,7 @@ class Generator(nn.Module):
     def __init__(self):
         super(Generator, self).__init__()
 
-        self.fc1 = nn.Linear(300, 1200)
+        self.fc1 = nn.Linear(config["latent_vector_dim"], 1200)
         self.fc2 = nn.Linear(1200, 5000)
         self.fc3 = nn.Linear(5000, 240*19*42)
 
@@ -189,8 +189,8 @@ def train():
             errD_real = criterion(output, label)
             errD_real.backward()
 
-            # Use gaussian noise to feed to Generator to generate all fakes sample
-            gaussian_noise = torch.randn(len(data), 300)
+            # Use gaussian noise to feed to the Generator to generate all fakes sample
+            gaussian_noise = torch.randn(len(data), config["latent_vector_dim"])
             fake_data = generator(gaussian_noise)
             print(gaussian_noise.shape)
             print(fake_data.shape)

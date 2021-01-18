@@ -45,6 +45,7 @@ data_prep:
     - 4
 neural_net:
   vae:
+    latent_vector_dim: 200
     recon_weight: 1
     kld_weight: 100
     test_size: 0.2
@@ -54,6 +55,7 @@ neural_net:
     seed: 1
     log_interval: 10
   cvae:
+    latent_vector_dim: 300
     recon_weight: 1
     kld_weight: 100
     test_size: 0.2
@@ -63,6 +65,7 @@ neural_net:
     seed: 1
     log_interval: 10
   dcgan:
+    latent_vector_dim: 300
     test_size: 0.2
     batch_size: 128
     epochs: 500

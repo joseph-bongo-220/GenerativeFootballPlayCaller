@@ -86,11 +86,11 @@ class ConvVAE(nn.Module):
         # max pooling height floor(38/2) = 19, max pooling width floor(84/2) = 42 (240 x 19 x 42)
         self.fc1 = nn.Linear(240*19*42, 5000)
         self.fc2 = nn.Linear(5000, 1200)
-        self.fc31 = nn.Linear(1200, 300)
-        self.fc32 = nn.Linear(1200, 300)
+        self.fc31 = nn.Linear(1200, config["latent_vector_dim"])
+        self.fc32 = nn.Linear(1200, config["latent_vector_dim"])
 
         # decode
-        self.fc4 = nn.Linear(300, 1200)
+        self.fc4 = nn.Linear(config["latent_vector_dim"], 1200)
         self.fc5 = nn.Linear(1200, 5000)
         self.fc6 = nn.Linear(5000, 240*19*42)
 
