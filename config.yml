@@ -62,3 +62,10 @@ neural_net:
     no_cuda: True
     seed: 1
     log_interval: 10
+  dcgan:
+    test_size: 0.2
+    batch_size: 128
+    epochs: 500
+    no_cuda: True
+    seed: 1
+    log_interval: 10

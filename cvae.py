@@ -119,7 +119,7 @@ class ConvVAE(nn.Module):
         std = torch.exp(0.5*logvar)
         # print("STD: " + str(std))
 
-        # returns a tensorr of random numbers the shape of std with Mean = 0 and Variance = 1
+        # returns a tensor of random numbers the shape of std with Mean = 0 and Variance = 1
         eps = torch.randn_like(std)
         # print("Rand: " + str(eps))
 
@@ -170,47 +170,34 @@ def loss_function(recon_x, x, mu, logvar, recon_weight=config["recon_weight"], k
    
 def train(epoch):
     """This function trains the model. (Move epochs to within train and test functions)"""
-    print("train")
-
     # switch model to training mode
-    print("training mode")
     model.train()
 
     # initialize training loss
-    print("initialize loss")
     train_loss = 0
 
     # iterate over each batch
-    print("iterate over each batch")
     for batch_idx, data in enumerate(train_loader):
 
         # save batch to device
-        print("save batch to device")
         data = data.to(device)
 
         # zero out the gradient for each iteration
-        print("zero out the gradient for each iteration")
         optimizer.zero_grad()
 
         # run forward method of VAE model
-        print("run forward method of VAE model")
         recon_batch, mu, logvar = model(data)
-        print("batch")
 
         # calculated KL Divergence/Reconstruction Loss Function
-        print("calculated KL Divergence/Reconstruction Loss Function")
         loss = loss_function(recon_batch, data, mu, logvar)
 
         # get gradient of loss function for each parameter
-        print("get gradient of loss function for each parameter")
         loss.backward()
 
         # calculate total loss
-        print("calculate total loss")
         train_loss += loss.item()
 
         # perform step of backpropigation using ADAM optimization algo
-        print("perform step of backpropigation using ADAM optimization algo")
         optimizer.step()
 
         # for every 10th epoch we print the training loss
