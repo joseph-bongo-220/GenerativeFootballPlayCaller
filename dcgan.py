@@ -72,6 +72,12 @@ test_loader = torch.utils.data.DataLoader(test_data, batch_size=args.batch_size,
 
 class Generator(nn.Module):
     def __init__(self):
+        """
+        This neural network takes randomly sampled input from the 300-degree standard normal distrbution and  
+        seeks to change it into data that resembles the real data in order to trick the discriminator. Therefore,
+        the generator looks to minimize (Real)log(D(x)) + (1-Real)log(1-D(G(z))) among the fake samples. 
+        This is equivalent to minimizing log(1-D(G(z))).
+        """
         super(Generator, self).__init__()
 
         self.fc1 = nn.Linear(config["latent_vector_dim"], 1200)
@@ -100,6 +106,11 @@ class Generator(nn.Module):
     
 class Discriminator(nn.Module):
     def __init__(self):
+        """
+        This Neural network takes data from the photos and attempts to classify them as real or fake. This is a simple
+        classification problem, meaning that we are looking to minimize cross entropy -((Real)*log(D(x)) + (1-Real)*log(1-D(G(z)))).
+        This is the equivalent to maximizing log(D(x)) + log(1-D(G(z))).
+        """
         super(Discriminator, self).__init__()
 
         # encode image
@@ -155,6 +166,9 @@ def train():
     The next thing that is done is training the Generator. The Generator will look to minimize log(1-D(G(z))), which
     directly contradicts what we want to minimize in the Discriminator. This is accomplished by classifying the generator output in
     part 1 of the discriminator training but using real labels
+
+    Note that the Mini-Max game between the Generator and the Discriminator can often produce saddle points where the loss functions
+    are not sufficiently minimized, but the gradient is 0 and therefore will impede gradient descent.
     """
 
     # switch model to training mode
